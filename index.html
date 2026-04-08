@@ -782,13 +782,13 @@ class App {
     if (this._fetchPromise) return this._fetchPromise;
     this._fetchPromise = (async () => {
       try {
-        const newTracks = await fetchTracks(this.genre.genreTerm, this.genre.fallback, this.offset, 10);
+        const newTracks = await fetchTracks(this.genre.genreTerm, this.genre.fallback, this.offset, 100);
         if (newTracks.length) {
           const startIdx = this.tracks.length;
           this.tracks.push(...newTracks);
           const newIdxs = newTracks.map((_, i) => startIdx + i);
           this._shuffleInto(newIdxs);
-          this.offset += 10;
+          this.offset += newTracks.length;
         }
       } finally {
         this._fetchPromise = null;

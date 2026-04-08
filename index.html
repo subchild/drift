@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Drift</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -22,10 +22,19 @@
     /* ───────── GENRE SCREEN ───────── */
     #genre-screen {
       position: fixed; inset: 0; z-index: 20;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
       background: #080810;
       transition: opacity .7s ease, transform .7s ease;
+    }
+    #genre-inner {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      width: 100%;
+      min-height: 100%;
+      padding-top: max(3rem, env(safe-area-inset-top));
+      padding-bottom: max(8rem, calc(env(safe-area-inset-bottom) + 6rem));
+      box-sizing: border-box;
     }
     #genre-screen.out {
       opacity: 0; transform: scale(1.04); pointer-events: none;
@@ -59,6 +68,7 @@
     }
     @media (max-width: 480px) {
       .genres-grid { grid-template-columns: repeat(2, 1fr); padding: 0 1rem; }
+      .genre-card { aspect-ratio: 4/3; }
     }
 
     .genre-card {
@@ -70,6 +80,7 @@
       background: #16161e;
       transition: transform .2s ease;
       user-select: none;
+      touch-action: manipulation;
     }
     .genre-card:hover { transform: scale(1.04); }
     .genre-card:hover .gc-bg { filter: brightness(.9) saturate(1.1); }
@@ -159,7 +170,7 @@
     #track-info {
       position: absolute;
       bottom: 0; left: 0; right: 0;
-      padding: 1.5rem 2.5rem 2.8rem;
+      padding: 1.5rem 2.5rem max(2.8rem, calc(env(safe-area-inset-bottom) + 1.2rem));
     }
     #genre-badge {
       display: inline-block;
@@ -209,12 +220,11 @@
     #top-bar {
       position: absolute;
       top: 0; left: 0; right: 0;
-      padding: 1.5rem 2rem;
+      padding: max(1.5rem, env(safe-area-inset-top)) 2rem 1rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-
     .ctrl-btn {
       width: 42px; height: 42px;
       border-radius: 50%; border: none;
@@ -278,6 +288,12 @@
     .q-dot.current { background: #fff; width: 20px; }
     .q-dot.next    { background: rgba(255,255,255,.4); width: 5px; }
 
+    @media (max-width: 768px) {
+      #top-bar { justify-content: center; }
+      #queue-dots, #pan-meter { display: none; }
+      .top-right { gap: 1.2rem; }
+    }
+
     /* ───── Loading ───── */
     #loading-screen {
       position: fixed; inset: 0; z-index: 100;
@@ -326,9 +342,11 @@
 
 <!-- ═══════════ GENRE SCREEN ═══════════ -->
 <div id="genre-screen">
-  <div class="logo">Drift</div>
-  <div class="tagline">ken burns effect for audio</div>
-  <div class="genres-grid" id="genres-grid"></div>
+  <div id="genre-inner">
+    <div class="logo">Drift</div>
+    <div class="tagline">ken burns effect for audio</div>
+    <div class="genres-grid" id="genres-grid"></div>
+  </div>
 </div>
 
 <!-- ═══════════ PLAYER SCREEN ═══════════ -->

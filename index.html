@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drift</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent: #fff;
+      --crossfade: 3s;
+    }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #080810;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    }
+
+    /* ───────── GENRE SCREEN ───────── */
+    #genre-screen {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #080810;
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    #genre-screen.out {
+      opacity: 0; transform: scale(1.04); pointer-events: none;
+    }
+
+    .logo {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -.04em;
+      background: linear-gradient(135deg, #fff 30%, #777);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: .4rem;
+    }
+    .tagline {
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      color: #555;
+      margin-bottom: 3.5rem;
+    }
+
+    .genres-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: .6rem;
+      padding: 0 1.5rem;
+      width: 100%;
+      max-width: 920px;
+    }
+    @media (max-width: 480px) {
+      .genres-grid { grid-template-columns: repeat(2, 1fr); padding: 0 1rem; }
+    }
+
+    .genre-card {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #16161e;
+      transition: transform .2s ease;
+      user-select: none;
+    }
+    .genre-card:hover { transform: scale(1.04); }
+    .genre-card:hover .gc-bg { filter: brightness(.9) saturate(1.1); }
+    .genre-card:active { transform: scale(.97); }
+
+    .gc-bg {
+      position: absolute; inset: 0;
+      background-size: cover;
+      background-position: center;
+      filter: brightness(.65);
+      opacity: 0;
+      transition: opacity .6s ease, filter .25s ease;
+    }
+    .gc-bg.loaded { opacity: 1; }
+
+    .gc-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(
+        to top,
+        rgba(0,0,0,.72) 0%,
+        rgba(0,0,0,.18) 55%,
+        transparent 100%
+      );
+    }
+    .gc-name {
+      position: absolute;
+      bottom: .75rem; left: .85rem; right: .5rem;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: clamp(.78rem, 1.3vw, .95rem);
+      font-weight: 700;
+      letter-spacing: -.01em;
+      color: #fff;
+      text-shadow: 0 1px 10px rgba(0,0,0,.7);
+    }
+
+    /* ───────── PLAYER SCREEN ───────── */
+    #player-screen {
+      position: fixed; inset: 0; z-index: 10;
+      opacity: 0; pointer-events: none;
+      transition: opacity .8s ease;
+    }
+    #player-screen.active { opacity: 1; pointer-events: all; }
+
+    /* Ken Burns canvas */
+    #kb-wrap {
+      position: absolute; inset: 0; overflow: hidden;
+    }
+
+    .kb-layer {
+      position: absolute; inset: -6%;  /* extra room for pan */
+      opacity: 0;
+      transition: opacity 2.5s ease;
+      will-change: transform, opacity;
+    }
+    .kb-layer.visible { opacity: 1; }
+    .kb-layer img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Ken Burns keyframes */
+    @keyframes kb-zoom-in-left  { from{transform:scale(1.0) translate(4%,2%)}  to{transform:scale(1.22) translate(-3%,-2%)} }
+    @keyframes kb-zoom-in-right { from{transform:scale(1.0) translate(-4%,1%)} to{transform:scale(1.22) translate(3%,-3%)} }
+    @keyframes kb-zoom-out-left { from{transform:scale(1.2) translate(-2%,-2%)} to{transform:scale(1.0) translate(4%,2%)} }
+    @keyframes kb-zoom-out-right{ from{transform:scale(1.2) translate(3%,2%)}  to{transform:scale(1.0) translate(-4%,1%)} }
+    @keyframes kb-drift-up      { from{transform:scale(1.12) translate(0%,4%)} to{transform:scale(1.18) translate(0%,-4%)} }
+    @keyframes kb-drift-down    { from{transform:scale(1.18) translate(2%,-3%)} to{transform:scale(1.1) translate(-2%,4%)} }
+    @keyframes kb-pan-left-right{ from{transform:scale(1.15) translate(-5%,0%)} to{transform:scale(1.15) translate(5%,0%)} }
+    @keyframes kb-pan-right-left{ from{transform:scale(1.15) translate(5%,0%)} to{transform:scale(1.15) translate(-5%,0%)} }
+
+    /* Vignette + gradient */
+    #overlay {
+      position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,.45) 100%),
+        linear-gradient(to bottom,
+          rgba(0,0,0,.25) 0%,
+          transparent 25%,
+          transparent 55%,
+          rgba(0,0,0,.7) 80%,
+          rgba(0,0,0,.92) 100%
+        );
+    }
+
+    /* ───── Track Info ───── */
+    #track-info {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 1.5rem 2.5rem 2.8rem;
+    }
+    #genre-badge {
+      display: inline-block;
+      padding: .28rem .9rem;
+      border-radius: 100px;
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: .9rem;
+      background: rgba(255,255,255,.12);
+      backdrop-filter: blur(12px);
+    }
+    #track-name {
+      font-size: clamp(1.5rem, 3.5vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -.025em;
+      line-height: 1.15;
+      text-shadow: 0 2px 24px rgba(0,0,0,.5);
+      margin-bottom: .4rem;
+    }
+    #track-artist {
+      font-size: clamp(.95rem, 2vw, 1.15rem);
+      color: rgba(255,255,255,.75);
+      font-weight: 500;
+      margin-bottom: .25rem;
+    }
+    #track-album {
+      font-size: .8rem;
+      color: rgba(255,255,255,.42);
+    }
+
+    /* ───── Progress ───── */
+    #progress-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: rgba(255,255,255,.15);
+    }
+    #progress-fill {
+      height: 100%; width: 0%;
+      background: rgba(255,255,255,.8);
+      transition: width .4s linear;
+    }
+
+    /* ───── Top controls ───── */
+    #top-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ctrl-btn {
+      width: 42px; height: 42px;
+      border-radius: 50%; border: none;
+      background: rgba(255,255,255,.12);
+      backdrop-filter: blur(14px);
+      color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .95rem;
+      transition: background .15s, transform .12s;
+      flex-shrink: 0;
+    }
+    .ctrl-btn:hover { background: rgba(255,255,255,.25); }
+    .ctrl-btn:active { transform: scale(.92); }
+
+    .top-right { display: flex; gap: .6rem; }
+
+    /* ───── Pan meter ───── */
+    #pan-meter {
+      display: flex; align-items: center; gap: .65rem;
+      background: rgba(0,0,0,.35);
+      backdrop-filter: blur(14px);
+      padding: .45rem 1.2rem;
+      border-radius: 100px;
+      border: 1px solid rgba(255,255,255,.07);
+    }
+    .pan-lbl {
+      font-size: .65rem;
+      color: rgba(255,255,255,.45);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 600;
+    }
+    #pan-track {
+      width: 110px; height: 3px;
+      background: rgba(255,255,255,.18);
+      border-radius: 2px;
+      position: relative;
+    }
+    #pan-thumb {
+      width: 10px; height: 10px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: -3.5px; left: 50%;
+      transform: translateX(-50%);
+      transition: left .12s linear;
+      box-shadow: 0 0 8px rgba(255,255,255,.5);
+    }
+
+    /* ───── Queue dots ───── */
+    #queue-dots {
+      display: flex; align-items: center; gap: 5px;
+    }
+    .q-dot {
+      height: 5px; border-radius: 3px;
+      background: rgba(255,255,255,.25);
+      transition: all .35s ease;
+      flex-shrink: 0;
+    }
+    .q-dot.played  { background: rgba(255,255,255,.15); width: 5px; }
+    .q-dot.current { background: #fff; width: 20px; }
+    .q-dot.next    { background: rgba(255,255,255,.4); width: 5px; }
+
+    /* ───── Loading ───── */
+    #loading-screen {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(8,8,16,.85);
+      backdrop-filter: blur(20px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.2rem;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    #loading-screen.active { opacity: 1; pointer-events: all; }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 2.5px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    .loading-txt { font-size: .85rem; color: rgba(255,255,255,.5); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ───── Error toast ───── */
+    #toast {
+      position: fixed;
+      bottom: 5rem; left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: rgba(255,60,60,.9);
+      backdrop-filter: blur(12px);
+      color: #fff;
+      padding: .7rem 1.5rem;
+      border-radius: 12px;
+      font-size: .85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s, transform .3s;
+      z-index: 200;
+      white-space: nowrap;
+    }
+    #toast.show {
+      opacity: 1; transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ GENRE SCREEN ═══════════ -->
+<div id="genre-screen">
+  <div class="logo">Drift</div>
+  <div class="tagline">ken burns effect for audio</div>
+  <div class="genres-grid" id="genres-grid"></div>
+</div>
+
+<!-- ═══════════ PLAYER SCREEN ═══════════ -->
+<div id="player-screen">
+  <div id="kb-wrap">
+    <div class="kb-layer" id="layer-a"><img id="img-a" alt="" crossorigin="anonymous"></div>
+    <div class="kb-layer" id="layer-b"><img id="img-b" alt="" crossorigin="anonymous"></div>
+  </div>
+
+  <div id="overlay"></div>
+
+  <div id="top-bar">
+    <div id="queue-dots"></div>
+    <div id="pan-meter">
+      <span class="pan-lbl">L</span>
+      <div id="pan-track"><div id="pan-thumb"></div></div>
+      <span class="pan-lbl">R</span>
+    </div>
+    <div class="top-right">
+      <button class="ctrl-btn" id="btn-skip" title="Skip">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+          <polygon points="0,1 8,7 0,13"/><rect x="10" y="1" width="3" height="12"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn" id="btn-pause" title="Pause">
+        <svg id="pause-icon" width="13" height="13" viewBox="0 0 13 13" fill="currentColor">
+          <rect x="1" y="1" width="4" height="11"/><rect x="8" y="1" width="4" height="11"/>
+        </svg>
+      </button>
+      <button class="ctrl-btn" id="btn-genres" title="Genres">
+        <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor">
+          <rect y="0" width="14" height="1.8" rx="1"/><rect y="4.6" width="14" height="1.8" rx="1"/><rect y="9.2" width="14" height="1.8" rx="1"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="track-info">
+    <div id="genre-badge"></div>
+    <div id="track-name"></div>
+    <div id="track-artist"></div>
+    <div id="track-album"></div>
+  </div>
+
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+</div>
+
+<!-- ═══════════ LOADING ═══════════ -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div class="loading-txt" id="loading-txt">Finding tracks…</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ──────────────────────────────────────────────────────────────
+//  GENRE DEFINITIONS
+// ──────────────────────────────────────────────────────────────
+const GENRES = [
+  { id:'pop',       name:'Pop',        genreTerm:'Pop',              fallback:'pop music' },
+  { id:'electronic',name:'Electronic', genreTerm:'Electronic',       fallback:'electronic music' },
+  { id:'rock',      name:'Rock',       genreTerm:'Rock',             fallback:'rock music' },
+  { id:'jazz',      name:'Jazz',       genreTerm:'Jazz',             fallback:'jazz' },
+  { id:'rnb',       name:'R&B',        genreTerm:'R&B/Soul',         fallback:'r&b soul' },
+  { id:'hiphop',    name:'Hip-Hop',    genreTerm:'Hip-Hop/Rap',      fallback:'hip hop rap' },
+  { id:'classical', name:'Classical',  genreTerm:'Classical',        fallback:'classical orchestra' },
+  { id:'afrobeat',  name:'Afrobeat',   genreTerm:'Afro-beat',        fallback:'afrobeat afropop' },
+  { id:'deephouse', name:'Deep House', genreTerm:'Deep House',       fallback:'deep house electronic' },
+  { id:'idm',       name:'IDM',        genreTerm:'Electronica/IDM',  fallback:'idm intelligent dance music' },
+];
+
+// 8 Ken Burns movement variants
+const KB_ANIMS = [
+  'kb-zoom-in-left', 'kb-zoom-in-right',
+  'kb-zoom-out-left','kb-zoom-out-right',
+  'kb-drift-up',     'kb-drift-down',
+  'kb-pan-left-right','kb-pan-right-left',
+];
+
+const CLIP_DURATION   = 28;   // seconds to play before advancing
+const CROSSFADE_S     = 3;    // crossfade duration in seconds
+const PREFETCH_AT     = 4;    // fetch more when fewer than this many tracks remain
+
+// ──────────────────────────────────────────────────────────────
+//  AUDIO ENGINE — Web Audio API + HTMLAudio crossfade + pan
+// ──────────────────────────────────────────────────────────────
+class AudioEngine {
+  constructor() {
+    this.ctx        = null;
+    this.master     = null;
+    this.slots      = [0, 1].map(() => ({ audio: new Audio(), gain: null, pan: null, src: null }));
+    this.active     = 0;
+    this.onPan      = null;   // callback(value -1..1)
+    this._panRafId  = null;
+    this._panStart  = null;
+    this._panFrom   = 0;
+    this._panTo     = 0;
+    this._panDur    = 1;
+    this.initialized = false;
+
+    this.slots.forEach(s => {
+      s.audio.crossOrigin = 'anonymous';
+      s.audio.preload = 'auto';
+    });
+  }
+
+  async init() {
+    if (this.initialized) return;
+    this.ctx    = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 1;
+    this.master.connect(this.ctx.destination);
+
+    for (const s of this.slots) {
+      s.gain = this.ctx.createGain();
+      s.gain.gain.value = 0;
+      s.pan  = this.ctx.createStereoPanner();
+      s.pan.pan.value = 0;
+      try {
+        const src = this.ctx.createMediaElementSource(s.audio);
+        src.connect(s.gain);
+      } catch(e) {
+        console.warn('createMediaElementSource failed:', e);
+      }
+      s.gain.connect(s.pan);
+      s.pan.connect(this.master);
+    }
+    this.initialized = true;
+  }
+
+  async resume() {
+    if (this.ctx?.state === 'suspended') await this.ctx.resume();
+  }
+
+  // Pan patterns: each is [startPan, endPan]
+  _pickPanMove() {
+    const opts = [
+      [-0.7,  0.7],  // full L→R
+      [ 0.7, -0.7],  // full R→L
+      [-0.4,  0.5],  // partial L→R
+      [ 0.5, -0.4],  // partial R→L
+      [-0.6,  0.0],  // L sweep to center
+      [ 0.6,  0.0],  // R sweep to center
+      [ 0.0, -0.6],  // center to L
+      [ 0.0,  0.6],  // center to R
+      [-0.3,  0.4],  // gentle L→R
+      [ 0.4, -0.3],  // gentle R→L
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  async _startSlot(slot, url, panFrom, panTo, duration, fadeIn) {
+    const s   = this.slots[slot];
+    const now = this.ctx.currentTime;
+
+    s.audio.src = url;
+
+    s.gain.gain.cancelScheduledValues(now);
+    s.gain.gain.setValueAtTime(0, now);
+    s.gain.gain.linearRampToValueAtTime(1, now + fadeIn);
+
+    s.pan.pan.cancelScheduledValues(now);
+    s.pan.pan.setValueAtTime(panFrom, now);
+    s.pan.pan.linearRampToValueAtTime(panTo, now + duration);
+
+    try { await s.audio.play(); } catch(e) { console.warn('play() failed:', e); }
+  }
+
+  // First track — no crossfade
+  async startFirst(url) {
+    await this.resume();
+    const [panFrom, panTo] = this._pickPanMove();
+    this.active = 0;
+    await this._startSlot(0, url, panFrom, panTo, CLIP_DURATION, 2);
+    this._animatePan(panFrom, panTo, CLIP_DURATION);
+    return [panFrom, panTo];
+  }
+
+  // Subsequent tracks — crossfade
+  async crossfadeTo(url) {
+    await this.resume();
+    const [panFrom, panTo] = this._pickPanMove();
+    const outSlot = this.active;
+    const inSlot  = 1 - this.active;
+    const now     = this.ctx.currentTime;
+
+    // Fade out current
+    const outGain = this.slots[outSlot].gain;
+    outGain.gain.cancelScheduledValues(now);
+    outGain.gain.setValueAtTime(outGain.gain.value, now);
+    outGain.gain.linearRampToValueAtTime(0, now + CROSSFADE_S);
+    setTimeout(() => {
+      const a = this.slots[outSlot].audio;
+      a.pause(); a.src = '';
+      this.slots[outSlot].gain.gain.setValueAtTime(0, this.ctx.currentTime);
+    }, CROSSFADE_S * 1000 + 200);
+
+    // Fade in new
+    await this._startSlot(inSlot, url, panFrom, panTo, CLIP_DURATION, CROSSFADE_S);
+
+    this.active = inSlot;
+    this._animatePan(panFrom, panTo, CLIP_DURATION);
+    return [panFrom, panTo];
+  }
+
+  _animatePan(from, to, duration) {
+    if (this._panRafId) cancelAnimationFrame(this._panRafId);
+    this._panFrom  = from;
+    this._panTo    = to;
+    this._panDur   = duration;
+    this._panStart = performance.now();
+    const tick = () => {
+      const t = Math.min((performance.now() - this._panStart) / 1000 / this._panDur, 1);
+      const v = this._panFrom + (this._panTo - this._panFrom) * t;
+      if (this.onPan) this.onPan(v);
+      if (t < 1) this._panRafId = requestAnimationFrame(tick);
+    };
+    this._panRafId = requestAnimationFrame(tick);
+  }
+
+  pause() {
+    this.slots.forEach(s => s.audio.pause());
+    if (this._panRafId) { cancelAnimationFrame(this._panRafId); this._panRafId = null; }
+  }
+
+  async resume_audio() {
+    await this.resume();
+    try { await this.slots[this.active].audio.play(); } catch(e) {}
+  }
+
+  stop() {
+    this.pause();
+    this.slots.forEach(s => {
+      s.audio.src = '';
+      if (s.gain) {
+        const now = this.ctx?.currentTime || 0;
+        s.gain.gain.cancelScheduledValues(now);
+        s.gain.gain.setValueAtTime(0, now);
+      }
+    });
+  }
+
+  get currentAudio() { return this.slots[this.active].audio; }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  KEN BURNS VISUAL ENGINE
+// ──────────────────────────────────────────────────────────────
+class KenBurnsVisual {
+  constructor() {
+    this.layers  = [document.getElementById('layer-a'), document.getElementById('layer-b')];
+    this.imgs    = [document.getElementById('img-a'),   document.getElementById('img-b')];
+    this.active  = 0;
+    this.animIdx = 0;
+  }
+
+  transition(artUrl, duration) {
+    const next    = 1 - this.active;
+    const nextLyr = this.layers[next];
+    const nextImg = this.imgs[next];
+    const currLyr = this.layers[this.active];
+
+    const anim = KB_ANIMS[this.animIdx % KB_ANIMS.length];
+    this.animIdx++;
+
+    const apply = () => {
+      // Remove old animation classes
+      nextLyr.classList.remove(...KB_ANIMS);
+      nextLyr.style.animationDuration = '';
+      // Force reflow
+      void nextLyr.offsetWidth;
+      // Set animation
+      nextLyr.style.animationDuration = duration + 's';
+      nextLyr.style.animationName     = anim;
+      nextLyr.style.animationTimingFunction = 'ease-in-out';
+      nextLyr.style.animationFillMode = 'forwards';
+      // Fade in
+      nextLyr.classList.add('visible');
+      // Fade out old
+      setTimeout(() => {
+        currLyr.classList.remove('visible');
+        setTimeout(() => {
+          currLyr.classList.remove(...KB_ANIMS);
+          currLyr.style.animationName = '';
+        }, 2600);
+      }, 2500);
+
+      this.active = next;
+    };
+
+    // Use image load or immediate if cached
+    nextImg.onload  = apply;
+    nextImg.onerror = apply; // show even on error
+    // If same src or already loaded, fire manually
+    nextImg.src = artUrl;
+    if (nextImg.complete && nextImg.naturalWidth) apply();
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  ITUNES API
+// ──────────────────────────────────────────────────────────────
+async function fetchTracks(genreTerm, fallback, offset = 0, limit = 10) {
+  const base = `https://itunes.apple.com/search?entity=song&media=music&limit=${limit}&offset=${offset}&country=us`;
+  // Primary: match against the genre field specifically
+  let url = `${base}&term=${encodeURIComponent(genreTerm)}&attribute=genreTerm`;
+  let res  = await fetch(url);
+  let data = await res.json();
+  let results = (data.results || []).filter(t => t.previewUrl);
+  // Fall back to keyword search if genre field returns too few results
+  if (results.length < 3 && fallback) {
+    url = `${base}&term=${encodeURIComponent(fallback)}`;
+    res  = await fetch(url);
+    data = await res.json();
+    results = (data.results || []).filter(t => t.previewUrl);
+  }
+  return results;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  MAIN APP
+// ──────────────────────────────────────────────────────────────
+class App {
+  constructor() {
+    this.audio   = new AudioEngine();
+    this.visual  = new KenBurnsVisual();
+    this.genre   = null;
+    this.tracks  = [];
+    this.queue   = [];   // shuffled playback order indices
+    this.qIdx    = 0;    // position in queue
+    this.offset  = 0;    // iTunes API offset
+    this.playing = false;
+    this.paused  = false;
+    this._nextTimer    = null;
+    this._progressTimer= null;
+    this._fetchPromise = null;
+
+    this._dom = {
+      genreScreen : document.getElementById('genre-screen'),
+      playerScreen: document.getElementById('player-screen'),
+      loading     : document.getElementById('loading-screen'),
+      loadingTxt  : document.getElementById('loading-txt'),
+      trackName   : document.getElementById('track-name'),
+      trackArtist : document.getElementById('track-artist'),
+      trackAlbum  : document.getElementById('track-album'),
+      genreBadge  : document.getElementById('genre-badge'),
+      progressFill: document.getElementById('progress-fill'),
+      panThumb    : document.getElementById('pan-thumb'),
+      queueDots   : document.getElementById('queue-dots'),
+      toast       : document.getElementById('toast'),
+      btnPause    : document.getElementById('btn-pause'),
+      pauseIcon   : document.getElementById('pause-icon'),
+    };
+
+    this._buildGenreGrid();
+    this._bindControls();
+
+    // Pan indicator
+    this.audio.onPan = v => {
+      const pct = ((v + 1) / 2) * 100;
+      this._dom.panThumb.style.left = `calc(${pct}% - 5px)`;
+    };
+  }
+
+  // ── Genre grid ──────────────────────────────────────────────
+  _buildGenreGrid() {
+    const grid = document.getElementById('genres-grid');
+    for (const g of GENRES) {
+      const card = document.createElement('div');
+      card.className = 'genre-card';
+      card.innerHTML = `
+        <div class="gc-bg" id="gc-bg-${g.id}"></div>
+        <div class="gc-overlay"></div>
+        <div class="gc-name">${g.name}</div>`;
+      card.addEventListener('click', () => this._selectGenre(g));
+      grid.appendChild(card);
+    }
+    // Async: load a cover for each genre card (fire-and-forget)
+    GENRES.forEach(async g => {
+      try {
+        const tracks = await fetchTracks(g.genreTerm, g.fallback, 0, 3);
+        if (!tracks.length) return;
+        const t = tracks[Math.floor(Math.random() * tracks.length)];
+        const art = (t.artworkUrl100 || '').replace('100x100bb','600x600bb').replace('100x100','600x600');
+        if (!art) return;
+        const el = document.getElementById(`gc-bg-${g.id}`);
+        if (!el) return;
+        // Preload image before revealing
+        const img = new Image();
+        img.onload = () => { el.style.backgroundImage = `url(${art})`; el.classList.add('loaded'); };
+        img.src = art;
+      } catch(_) {}
+    });
+  }
+
+  _bindControls() {
+    document.getElementById('btn-pause').addEventListener('click', () => this._togglePause());
+    document.getElementById('btn-skip' ).addEventListener('click', () => this._skip());
+    document.getElementById('btn-genres').addEventListener('click',() => this._showGenres());
+  }
+
+  // ── Genre selection ─────────────────────────────────────────
+  async _selectGenre(genre) {
+    this.genre = genre;
+    this.tracks       = [];
+    this.queue        = [];
+    this.qIdx         = 0;
+    this.offset       = 0;
+    this._fetchPromise = null;
+
+    this._dom.genreBadge.textContent    = genre.name;
+    this._dom.genreBadge.style.background = 'rgba(255,255,255,.12)';
+
+    this._showLoading('Finding tracks…');
+
+    let ok = false;
+    try {
+      await this._fetchMore();
+      ok = this.tracks.length > 0;
+    } catch(e) {
+      console.error('Fetch error:', e);
+    }
+
+    this._hideLoading();
+
+    if (!ok) {
+      this._toast('No previews found — try another genre');
+      return;
+    }
+
+    // Transition screens
+    this._dom.genreScreen.classList.add('out');
+    setTimeout(() => this._dom.playerScreen.classList.add('active'), 100);
+
+    // Init audio (must happen after user gesture)
+    await this.audio.init();
+    await this.audio.resume();
+
+    this.playing = true;
+    this.paused  = false;
+
+    await this._playNext(true);
+  }
+
+  // ── Fetch tracks from iTunes ─────────────────────────────────
+  // Returns a shared in-flight promise so multiple callers can await the same fetch.
+  _fetchMore() {
+    if (this._fetchPromise) return this._fetchPromise;
+    this._fetchPromise = (async () => {
+      try {
+        const newTracks = await fetchTracks(this.genre.genreTerm, this.genre.fallback, this.offset, 10);
+        if (newTracks.length) {
+          const startIdx = this.tracks.length;
+          this.tracks.push(...newTracks);
+          const newIdxs = newTracks.map((_, i) => startIdx + i);
+          this._shuffleInto(newIdxs);
+          this.offset += 10;
+        }
+      } finally {
+        this._fetchPromise = null;
+      }
+    })();
+    return this._fetchPromise;
+  }
+
+  _shuffleInto(idxs) {
+    // Fisher-Yates shuffle new indices then append to queue
+    for (let i = idxs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+    }
+    this.queue.push(...idxs);
+  }
+
+  // ── Playback ─────────────────────────────────────────────────
+  async _playNext(first = false) {
+    if (!this.playing) return;
+
+    // Preload next batch in the background when getting low
+    const remaining = this.queue.length - this.qIdx;
+    if (remaining <= PREFETCH_AT) this._fetchMore(); // fire-and-forget preload
+
+    // If we've caught up to the queue end, wait for the in-flight fetch
+    if (this.qIdx >= this.queue.length) {
+      await this._fetchMore();
+      if (this.qIdx >= this.queue.length) {
+        this._toast('No more tracks available');
+        return;
+      }
+    }
+
+    const trackIdx = this.queue[this.qIdx++];
+    const track    = this.tracks[trackIdx];
+
+    if (!track?.previewUrl) { return this._playNext(first); }
+
+    // Update visuals
+    this._updateInfo(track);
+    this._updateQueueDots();
+    const artUrl = (track.artworkUrl100 || '').replace('100x100bb', '600x600bb').replace('100x100', '600x600');
+    this.visual.transition(artUrl, CLIP_DURATION + 1);
+
+    // Audio
+    if (first) {
+      await this.audio.startFirst(track.previewUrl);
+    } else {
+      await this.audio.crossfadeTo(track.previewUrl);
+    }
+
+    // Schedule next
+    clearTimeout(this._nextTimer);
+    this._nextTimer = setTimeout(() => {
+      if (this.playing && !this.paused) this._playNext();
+    }, (CLIP_DURATION - CROSSFADE_S) * 1000);
+
+    // Progress bar
+    this._startProgress(CLIP_DURATION);
+  }
+
+  // ── Info display ─────────────────────────────────────────────
+  _updateInfo(track) {
+    this._dom.trackName.textContent   = track.trackName      || 'Unknown';
+    this._dom.trackArtist.textContent = track.artistName     || 'Unknown';
+    this._dom.trackAlbum.textContent  = track.collectionName || '';
+  }
+
+  _updateQueueDots() {
+    const el = this._dom.queueDots;
+    el.innerHTML = '';
+    const total   = Math.min(this.queue.length, 12);
+    const current = (this.qIdx - 1 + this.queue.length) % this.queue.length;
+    const start   = Math.max(0, current - 3);
+    const end     = Math.min(start + total - 1, this.queue.length - 1);
+    for (let i = start; i <= end; i++) {
+      const d = document.createElement('div');
+      d.className = 'q-dot';
+      if      (i < current) d.classList.add('played');
+      else if (i === current) d.classList.add('current');
+      else                    d.classList.add('next');
+      el.appendChild(d);
+    }
+  }
+
+  _startProgress(duration) {
+    clearInterval(this._progressTimer);
+    const t0 = Date.now();
+    this._dom.progressFill.style.transition = 'none';
+    this._dom.progressFill.style.width = '0%';
+    requestAnimationFrame(() => {
+      this._dom.progressFill.style.transition = 'width .4s linear';
+      this._progressTimer = setInterval(() => {
+        const pct = Math.min(((Date.now() - t0) / 1000 / duration) * 100, 100);
+        this._dom.progressFill.style.width = pct + '%';
+        if (pct >= 100) clearInterval(this._progressTimer);
+      }, 250);
+    });
+  }
+
+  // ── Controls ─────────────────────────────────────────────────
+  _togglePause() {
+    if (this.paused) {
+      this.paused = false;
+      this.audio.resume_audio();
+      this._dom.pauseIcon.innerHTML =
+        '<rect x="1" y="1" width="4" height="11"/><rect x="8" y="1" width="4" height="11"/>';
+    } else {
+      this.paused = true;
+      this.audio.pause();
+      clearTimeout(this._nextTimer);
+      this._dom.pauseIcon.innerHTML =
+        '<polygon points="1,1 13,7 1,13"/>';
+    }
+  }
+
+  _skip() {
+    clearTimeout(this._nextTimer);
+    clearInterval(this._progressTimer);
+    if (this.playing) {
+      // Quick fade out then next
+      if (this.audio.ctx) {
+        const slot = this.audio.slots[this.audio.active];
+        const now  = this.audio.ctx.currentTime;
+        slot.gain.gain.cancelScheduledValues(now);
+        slot.gain.gain.setValueAtTime(slot.gain.gain.value, now);
+        slot.gain.gain.linearRampToValueAtTime(0, now + .6);
+        setTimeout(() => this._playNext(), 300);
+      } else {
+        this._playNext();
+      }
+    }
+  }
+
+  _showGenres() {
+    this.playing = false;
+    this.audio.stop();
+    clearTimeout(this._nextTimer);
+    clearInterval(this._progressTimer);
+    this._dom.playerScreen.classList.remove('active');
+    setTimeout(() => this._dom.genreScreen.classList.remove('out'), 100);
+  }
+
+  // ── Utilities ────────────────────────────────────────────────
+  _showLoading(txt = 'Loading…') {
+    this._dom.loadingTxt.textContent = txt;
+    this._dom.loading.classList.add('active');
+  }
+  _hideLoading() { this._dom.loading.classList.remove('active'); }
+
+  _toast(msg) {
+    const el = this._dom.toast;
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3500);
+  }
+}
+
+// Boot
+const app = new App();
+</script>
+</body>
+</html>

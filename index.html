@@ -419,16 +419,16 @@
 //  GENRE DEFINITIONS
 // ──────────────────────────────────────────────────────────────
 const GENRES = [
-  { id:'pop',       name:'Pop',        genreTerm:'Pop',              fallback:'pop music' },
-  { id:'electronic',name:'Electronic', genreTerm:'Electronic',       fallback:'electronic music' },
-  { id:'rock',      name:'Rock',       genreTerm:'Rock',             fallback:'rock music' },
-  { id:'jazz',      name:'Jazz',       genreTerm:'Jazz',             fallback:'jazz' },
-  { id:'rnb',       name:'R&B',        genreTerm:'R&B/Soul',         fallback:'r&b soul' },
-  { id:'hiphop',    name:'Hip-Hop',    genreTerm:'Hip-Hop/Rap',      fallback:'hip hop rap' },
-  { id:'classical', name:'Classical',  genreTerm:'Classical',        fallback:'classical orchestra' },
-  { id:'afrobeat',  name:'Afrobeat',   genreTerm:'Afro-beat',        fallback:'afrobeat afropop' },
-  { id:'deephouse', name:'Deep House', genreTerm:'Deep House',       fallback:'deep house electronic' },
-  { id:'idm',       name:'IDM',        genreTerm:'Electronica/IDM',  fallback:'idm intelligent dance music' },
+  { id:'pop',       name:'Pop',        genreTerm:'Pop',              fallback:'Dance' },
+  { id:'electronic',name:'Electronic', genreTerm:'Electronic',       fallback:'Dance' },
+  { id:'rock',      name:'Rock',       genreTerm:'Rock',             fallback:'Alternative' },
+  { id:'jazz',      name:'Jazz',       genreTerm:'Jazz',             fallback:'Blues' },
+  { id:'rnb',       name:'R&B',        genreTerm:'R&B/Soul',         fallback:'Soul' },
+  { id:'hiphop',    name:'Hip-Hop',    genreTerm:'Hip-Hop/Rap',      fallback:'Urban' },
+  { id:'classical', name:'Classical',  genreTerm:'Classical',        fallback:'Soundtrack' },
+  { id:'afrobeat',  name:'Afrobeat',   genreTerm:'Afro-beat',        fallback:'World' },
+  { id:'deephouse', name:'Deep House', genreTerm:'Deep House',       fallback:'Electronic' },
+  { id:'idm',       name:'IDM',        genreTerm:'Electronica/IDM',  fallback:'Electronic' },
 ];
 
 // 8 Ken Burns movement variants
@@ -680,9 +680,9 @@ async function fetchTracks(genreTerm, fallback, offset = 0, limit = 10) {
   let url = `${base}&term=${encodeURIComponent(genreTerm)}&attribute=genreTerm`;
   let data = await fetchWithRetry(url);
   let results = (data.results || []).filter(t => t.previewUrl);
-  // Fall back to keyword search if genre field returns too few results
+  // Fall back to a broader genre term (still genre-constrained, not free text)
   if (results.length < 3 && fallback) {
-    url = `${base}&term=${encodeURIComponent(fallback)}`;
+    url = `${base}&term=${encodeURIComponent(fallback)}&attribute=genreTerm`;
     data = await fetchWithRetry(url);
     results = (data.results || []).filter(t => t.previewUrl);
   }

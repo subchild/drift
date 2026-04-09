@@ -332,9 +332,19 @@
       transition: opacity .3s, transform .3s;
       z-index: 200;
       white-space: nowrap;
+      text-align: center;
+      max-width: 90vw;
+      white-space: normal;
+      line-height: 1.5;
     }
     #toast.show {
       opacity: 1; transform: translateX(-50%) translateY(0);
+      pointer-events: all;
+    }
+    #toast a {
+      color: #fff;
+      font-weight: 700;
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -545,7 +555,7 @@ class AudioEngine {
       const a = this.slots[outSlot].audio;
       a.pause(); a.src = '';
       this.slots[outSlot].gain.gain.setValueAtTime(0, this.ctx.currentTime);
-    }, CROSSFADE_S * 500 + 200);
+    }, CROSSFADE_S * 1000 + 200);
 
     // Fade in new
     await this._startSlot(inSlot, url, panFrom, panTo, CLIP_DURATION, CROSSFADE_S);
@@ -562,7 +572,7 @@ class AudioEngine {
     this._panDur   = duration;
     this._panStart = performance.now();
     const tick = () => {
-      const t = Math.min((performance.now() - this._panStart) / 500 / this._panDur, 1);
+      const t = Math.min((performance.now() - this._panStart) / 1000 / this._panDur, 1);
       const v = this._panFrom + (this._panTo - this._panFrom) * t;
       if (this.onPan) this.onPan(v);
       if (t < 1) this._panRafId = requestAnimationFrame(tick);
@@ -652,18 +662,28 @@ class KenBurnsVisual {
 // ──────────────────────────────────────────────────────────────
 //  ITUNES API
 // ──────────────────────────────────────────────────────────────
+async function fetchWithRetry(url, retries = 3, delay = 800) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url);
+      return await res.json();
+    } catch (err) {
+      if (i < retries - 1) await new Promise(r => setTimeout(r, delay));
+      else throw err;
+    }
+  }
+}
+
 async function fetchTracks(genreTerm, fallback, offset = 0, limit = 10) {
   const base = `https://itunes.apple.com/search?entity=song&media=music&limit=${limit}&offset=${offset}&country=us`;
   // Primary: match against the genre field specifically
   let url = `${base}&term=${encodeURIComponent(genreTerm)}&attribute=genreTerm`;
-  let res  = await fetch(url);
-  let data = await res.json();
+  let data = await fetchWithRetry(url);
   let results = (data.results || []).filter(t => t.previewUrl);
   // Fall back to keyword search if genre field returns too few results
   if (results.length < 3 && fallback) {
     url = `${base}&term=${encodeURIComponent(fallback)}`;
-    res  = await fetch(url);
-    data = await res.json();
+    data = await fetchWithRetry(url);
     results = (data.results || []).filter(t => t.previewUrl);
   }
   return results;
@@ -776,7 +796,11 @@ class App {
     this._hideLoading();
 
     if (!ok) {
-      this._toast('No previews found — try another genre');
+      const url = location.href;
+      this._toast(
+        `Couldn't load tracks. <a href="${url}" target="_blank" rel="noopener">Open in Safari</a>`,
+        6000
+      );
       return;
     }
 
@@ -868,7 +892,7 @@ class App {
     clearTimeout(this._nextTimer);
     this._nextTimer = setTimeout(() => {
       if (this.playing && !this.paused) this._playNext();
-    }, (CLIP_DURATION - CROSSFADE_S) * 500);
+    }, (CLIP_DURATION - CROSSFADE_S) * 1000);
 
     // Progress bar
     this._startProgress(CLIP_DURATION);
@@ -963,11 +987,11 @@ class App {
   }
   _hideLoading() { this._dom.loading.classList.remove('active'); }
 
-  _toast(msg) {
+  _toast(msg, duration = 3500) {
     const el = this._dom.toast;
-    el.textContent = msg;
+    el.innerHTML = msg;
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3500);
+    setTimeout(() => el.classList.remove('show'), duration);
   }
 }
 
